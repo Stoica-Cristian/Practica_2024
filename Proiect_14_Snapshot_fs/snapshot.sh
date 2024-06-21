@@ -9,9 +9,10 @@ function create_snapshot() {
 
     local timestamp=$(date +%Y-%m-%d_%H:%M:%S)
     local current_timestamp_epoch=$(date +%s)
-    local snapshot_path="${SNAPSHOT_DIR}/${snapshot_name}__${timestamp}.snapshot"
+    local snapshot_path_dir="${SNAPSHOT_DIR}/${snapshot_name}__${timestamp}"
+    local snapshot_path="${snapshot_path_dir}/${snapshot_name}__${timestamp}.snapshot"
 
-    mkdir -p "$SNAPSHOT_DIR"
+    mkdir -p "$snapshot_path"
     local exclude_args=()
     for exclude in "${EXCLUDE_PATHS[@]}"
     do
@@ -20,7 +21,9 @@ function create_snapshot() {
 
     local exclude_str="${exclude_args[*]}"
 
-    sudo find "$HOME/so" $exclude_str -xdev -type f -print > "$snapshot_path" 2>/dev/null
+    sudo find "$HOME/so" $exclude_str -xdev -type f > "$snapshot_path" 2>/dev/null
+
+    is_first_snapshot=$(sudo find "$snapshot_path_dir" -type f | wc -l)
 
     echo $current_timestamp_epoch >> "$snapshot_path"
     echo "Snapshot created: $snapshot_path"
@@ -35,7 +38,8 @@ function apend_to_excluded_paths() {
     fi
 
     for path in "${EXCLUDE_PATHS[@]}"; do
-        if [[ "$path" == "$path_to_add" ]]; then
+        if [[ "$path" == "$path_to_add" ]]
+        then
             echo "The path $path_to_add is already in EXCLUDE_PATHS."
             return 1
         fi
@@ -135,11 +139,11 @@ function check_for_modified_file(){
     local file_path="$2"
     local only_one="$3"
 
-    # if [ ! -f "$filename" ]
-    # then
-    #     echo "File $filename nu există."
-    #     exit 1
-    # fi
+    if [ ! -f "$file_path" ]
+    then
+        echo "[ check_for_modified_file(snapshot, file_path, only_one) ] - The file does not exist!"
+        exit 1
+    fi
 
     local file_modification_date=$(stat -c %y $file_path)
     local file_modification_epoch=$(date -d "$file_modification_date" +%s)
