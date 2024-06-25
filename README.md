@@ -16,3 +16,7 @@ Am realizat proiectul "Aplicație C/C++ : 05 - DNS look-up using sockets" si am 
 
 # 21.06.2024
 
+
+# 25.06.2024
+
+Am schimbat majoritatea functiilor de baza si logica scriptului pentru a implementa noile cerinte sugerate de examinatori.

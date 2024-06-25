@@ -2,6 +2,7 @@
 
 SNAPSHOT_DIR="$HOME/snapshots"
 EXCLUDE_PATHS=("$SNAPSHOT_DIR")
+WORKING_DIR="$HOME/so"
 
 function create_snapshot() {
     local snapshot_name
@@ -12,21 +13,77 @@ function create_snapshot() {
     local snapshot_path_dir="${SNAPSHOT_DIR}/${snapshot_name}__${timestamp}"
     local snapshot_path="${snapshot_path_dir}/${snapshot_name}__${timestamp}.snapshot"
 
-    mkdir -p "$snapshot_path"
+    mkdir -p "$snapshot_path_dir"
+
+    # exclude paths
     local exclude_args=()
     for exclude in "${EXCLUDE_PATHS[@]}"
     do
         exclude_args+=("-path $exclude -prune -o")
     done
-
     local exclude_str="${exclude_args[*]}"
 
-    sudo find "$HOME/so" $exclude_str -xdev -type f > "$snapshot_path" 2>/dev/null
+    nr_of_snapshots=$(sudo find "$SNAPSHOT_DIR" -maxdepth 1 -not -path '*/.*' | wc -l | cut -f1 -d' ')
 
-    is_first_snapshot=$(sudo find "$snapshot_path_dir" -type f | wc -l)
+    sudo find "$WORKING_DIR" $exclude_str -xdev -type f > "$snapshot_path" 2>/dev/null
 
-    echo $current_timestamp_epoch >> "$snapshot_path"
+    if [[ "$nr_of_snapshots" = '2' ]]     # first_snapshot
+    then
+        full_backup_dir="${snapshot_path_dir}/full_backup"
+        mkdir -p "$full_backup_dir"
+        rsync -a "$WORKING_DIR" "$full_backup_dir"
+    else
+        current_snapshot="${snapshot_path}"
+        previous_snapshot_dir_path=$(find "${SNAPSHOT_DIR}" -maxdepth 1 -type d -exec stat -c '%W %n' {} + | sort -n | tail -n 2 | head -n 1 |cut -f2 -d' ')
+        previous_snapshot_dir_basename=$(basename "$previous_snapshot_dir_path")
+        previous_snapshot="${previous_snapshot_dir_path}/${previous_snapshot_dir_basename}.snapshot"
+
+        created_files_dir="${snapshot_path_dir}/created_files"
+        modified_files_dir="${snapshot_path_dir}/modified_files"
+        deleted_files_file_path="${snapshot_path_dir}/deleted_files"
+
+        # created_files
+        sort -o $previous_snapshot $previous_snapshot
+        sort -o $current_snapshot $current_snapshot
+
+        comm -13 "$previous_snapshot" "$current_snapshot" > "${snapshot_path_dir}/created_temp"
+
+        mkdir -p "$created_files_dir"
+
+        while read created_file
+        do
+            filename=$(basename "$created_file")
+            cp "$created_file" "${created_files_dir}/${filename}"
+        done < "${snapshot_path_dir}/created_temp"
+
+        rm "${snapshot_path_dir}/created_temp"
+
+        # deleted_files
+
+        comm -23 "$previous_snapshot" "$current_snapshot" > "$deleted_files_file_path"
+
+        # modified_files
+
+        mkdir -p "$modified_files_dir"
+
+        # to do : remove created_files from entire list
+        echo "Modified"
+        while read file_path
+        do
+            check_for_modified_file "$previous_snapshot" "$file_path" "no"
+            local result=$(echo $?)
+            if [[ $result = '1' ]]
+            then
+                echo "$file_path"
+                file=$(basename "$file_path")
+                cp "$file_path" "${modified_files_dir}/${file}"
+            fi
+
+        done < "$current_snapshot"
+    fi
+
     echo "Snapshot created: $snapshot_path"
+    echo
 }
 
 function apend_to_excluded_paths() {
@@ -53,12 +110,6 @@ compare_snapshots() {
     local snapshot1="$1"
     local snapshot2="$2"
 
-    local timestamp1=$(tail -n 1 $snapshot1)
-    local timestamp2=$(tail -n 1 $snapshot2)
-
-    sed -i '$d' $snapshot1
-    sed -i '$d' $snapshot2
-
     sort -o $snapshot1 $snapshot1
     sort -o $snapshot2 $snapshot2
 
@@ -68,9 +119,6 @@ compare_snapshots() {
     echo -e "\nDeleted files:"
     comm -23 "$snapshot1" "$snapshot2"
     echo
-
-    echo $timestamp1 >> $snapshot1
-    echo $timestamp2 >> $snapshot2
 }
 
 function compare_snapshots_specify_path() {
@@ -124,7 +172,8 @@ function check_for_modified_files() {
 
         if [[ $result = '0' ]]
         then
-            echo "The file $filename has not been modified."
+            # echo "The file $filename has not been modified."
+            echo
         elif [[ $result = '1' ]]
         then
             echo -e "\e[31mThe file $filename has been modified on ${file_modification_date}\e[0m"
@@ -147,7 +196,7 @@ function check_for_modified_file(){
 
     local file_modification_date=$(stat -c %y $file_path)
     local file_modification_epoch=$(date -d "$file_modification_date" +%s)
-    local snapshot_creation_time_epoch=$(tail -n 1 "$snapshot")
+    local snapshot_creation_time_epoch=$(stat -c %W "$snapshot")
 
     if [ "$only_one" = "only_one" ]
     then
