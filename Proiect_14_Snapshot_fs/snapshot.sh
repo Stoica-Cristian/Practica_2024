@@ -81,12 +81,9 @@ function create_snapshot() {
         rm "${snapshot_path_dir}/created_temp"
     fi
 
-
     echo "Snapshot created: $snapshot_path"
     echo
 }
-
-# diff -r so so_full_backup/so/ | cut -f3,4 -d' ' | sed 's#: #/#g'
 
 function apend_to_excluded_paths() {
     local path_to_add="$1"
@@ -112,6 +109,18 @@ function compare_snapshots() {
     local snapshot1="$1"
     local snapshot2="$2"
 
+    if [[ ! -f "$snapshot1" ]]
+    then
+        echo -e "\n[ compare_snapshots(snapshot1, snapshot2) ] - The first snapshot does not exist!\n"
+        return
+    fi
+
+    if [[ ! -f "$snapshot2" ]]
+    then
+        echo -e "\n[ compare_snapshots(snapshot1, snapshot2) ] - The second snapshot does not exist!\n"
+        return
+    fi
+
     sort -o $snapshot1 $snapshot1
     sort -o $snapshot2 $snapshot2
 
@@ -127,6 +136,18 @@ function compare_snapshots_specify_path() {
     local snapshot1="$1"
     local snapshot2="$2"
     local specific_path="$3"
+
+    if [[ ! -f "$snapshot1" ]]
+    then
+        echo -e "\n[ compare_snapshots_specify_path(snapshot1, snapshot2, specific_path) ] - The first snapshot does not exist!\n"
+        return
+    fi
+
+    if [[ ! -f "$snapshot2" ]]
+    then
+        echo -e "\n[ compare_snapshots_specify_path(snapshot1, snapshot2, specific_path) ] - The second snapshot does not exist!\n"
+        return
+    fi
 
     local snapshot1_dir=$(dirname "$snapshot1")
     local snapshot2_dir=$(dirname "$snapshot2")
@@ -144,6 +165,18 @@ function compare_snapshots_remove_path() {
     local snapshot2="$2"
     local path_to_delete="$3"
 
+    if [[ ! -f "$snapshot1" ]]
+    then
+        echo -e "\n[ compare_snapshots_remove_path(snapshot1, snapshot2, path_to_delete) ] - The first snapshot does not exist!\n"
+        return
+    fi
+
+    if [[ ! -f "$snapshot2" ]]
+    then
+        echo -e "\n[ compare_snapshots_remove_path(snapshot1, snapshot2, path_to_delete) ] - The second snapshot does not exist!\n"
+        return
+    fi
+
     local snapshot1_dir=$(dirname "$snapshot1")
     local snapshot2_dir=$(dirname "$snapshot2")
 
@@ -158,7 +191,13 @@ function compare_snapshots_remove_path() {
 function check_for_modified_files() {
     local snapshot="$SNAPSHOTS_DIR/$1"
 
-    echo
+    if [[ ! -f "$snapshot" ]]
+    then
+        echo -e "\n[ check_for_modified_files(snapshot) ] - The snapshot does not exist!\n"
+        return
+    fi
+
+    echos
     while read file_path
     do
         if [[ ! -f $file_path ]]
@@ -172,11 +211,7 @@ function check_for_modified_files() {
         local filename=$(basename "$file_path")
         local file_modification_date=$(stat -c %y $file_path | cut -d'.' -f1)
 
-        if [[ $result = '0' ]]
-        then
-            # echo "The file $filename has not been modified."
-            echo -n
-        elif [[ $result = '1' ]]
+        if [[ $result = '1' ]]
         then
             echo -e "\e[31mThe file $filename has been modified on ${file_modification_date}\e[0m"
         fi
@@ -190,10 +225,16 @@ function check_for_modified_file(){
     local file_path="$2"
     local only_one="$3"
 
+    if [[ ! -f "$snapshot" ]]
+    then
+        echo -e "\n[ check_for_modified_file(snapshot, file_path, only_one) ] - The snapshot does not exist!\n"
+        return
+    fi
+
     if [ ! -f "$file_path" ]
     then
-        echo "[ check_for_modified_file(snapshot, file_path, only_one) ] - The file does not exist!"
-        exit 1
+        echo -e "\n[ check_for_modified_file(snapshot, file_path, only_one) ] - The file does not exist!\n"
+        return
     fi
 
     local file_modification_date=$(stat -c %y $file_path)
@@ -224,6 +265,30 @@ function display_differences_for_a_modified_file()
     local snapshot2="$2"
     local file_path="$3"
 
+    if [[ ! -f "$snapshot1" ]]
+    then
+        echo -e "\n[ display_differences_for_a_modified_file(snapshot1, snapshot2, file_path) ] - The first snapshot does not exist, please enter a valid one!\n"
+        return
+    fi
+
+    if [[ ! -f "$snapshot2" ]]
+    then
+        echo -e "\n[ display_differences_for_a_modified_file(snapshot1, snapshot2, file_path) ] - The second snapshot does not exist, please enter a valid one!\n"
+        return
+    fi
+
+    if ! egrep "^${file_path}" "$snapshot1" > /dev/null
+    then
+        echo -e "\nThe file does not exists in the first snapshot!\n"
+        return
+    fi
+
+    if ! egrep "^${file_path}" "$snapshot2" > /dev/null
+    then
+        echo -e "\nThe file does not exists in the second snapshot!\n"
+        returnS
+    fi
+
     local snapshot1_dir=$(dirname "$snapshot1")
     local snapshot2_dir=$(dirname "$snapshot2")
 
@@ -234,10 +299,17 @@ function display_differences_for_a_modified_file()
 
     local first_snapshot=${SNAPSHOT_LIST[-1]}
 
+    # one of the snapshots is the initial one
     if [[ "$snapshot1" = "$first_snapshot" && -f "$file_path_modified_dir2" ]]
     then
+        if [[ ! -f  "$file_path_full_backup" ]]
+        then
+            echo -e "\nThe file was created between the two snapshots.\n"
+            return
+        fi
+
         local file_path_full_backup="${snapshot1_dir}/full_backup${file_path}"
-        echo -e "\nDiferentele dintre cele doua versiuni ale fisierului sunt:\n"
+        echo -e "\nThe differences between the two versions of the file are:\n"
         diff -y "$file_path_full_backup" "$file_path_modified_dir2"
         echo
         return
@@ -245,8 +317,14 @@ function display_differences_for_a_modified_file()
 
     if [[ "$snapshot2" = "$first_snapshot" && -f "$file_path_modified_dir1" ]]
     then
+        if [[ ! -f  "$file_path_full_backup" ]]
+        then
+            echo -e "\nThe file was created between the two snapshots.\n"
+            return
+        fi
+
         local file_path_full_backup="${snapshot2_dir}/full_backup${file_path}"
-        echo -e "\nDiferentele dintre cele doua versiuni ale fisierului sunt:\n"
+        echo -e "\nThe differences between the two versions of the file are:\n"
         diff -y "$file_path_full_backup" "$file_path_modified_dir1"
         echo
         return
@@ -269,9 +347,8 @@ function display_differences_for_a_modified_file()
         least_recent_snapshot="$snapshot1"
     fi
 
-
-    local snapshot_mrs_dir=$(dirname "$snapshot1")
-    local snapshot_lrs_dir=$(dirname "$snapshot2")
+    local snapshot_mrs_dir=$(dirname "$most_recent_snapshot")
+    local snapshot_lrs_dir=$(dirname "$least_recent_snapshot")
 
     local file_path_modified_dir_mrs="${snapshot_mrs_dir}/modified_files${file_path}"
     local file_path_modified_dir_lrs="${snapshot_lrs_dir}/modified_files${file_path}"
@@ -280,8 +357,8 @@ function display_differences_for_a_modified_file()
     # already exist; modified and modified
     if [[ -f "$file_path_modified_dir_lrs" && -f "$file_path_modified_dir_mrs" ]]
     then
-        echo -e "\nDiferentele dintre cele doua versiuni ale fisierului sunt:\n"
-        diff -y "$file_path_modified_dir_lrs" "$file_path_modified_dir_mrs"
+        echo -e "\nThe differences between the two versions of the file are:\n"
+        diff -y "$file_path_modified_dir_mrs" "$file_path_modified_dir_lrs"
         echo
         return
     fi
@@ -289,7 +366,7 @@ function display_differences_for_a_modified_file()
     # exists in created_files in least recent snapshot and then modified in the other
     if [[ -f "$file_path_created_dir_lrs" && -f "$file_path_modified_dir_mrs" ]]
     then
-        echo -e "\nDiferentele dintre cele doua versiuni ale fisierului sunt:\n"
+        echo -e "\nThe differences between the two versions of the file are:\n"
         diff -y "$file_path_created_dir_lrs" "$file_path_modified_dir_mrs"
         echo
         return
@@ -300,17 +377,21 @@ function display_differences_for_a_modified_file()
     local actual_mrs_snapshot=""
     local actual_lrs_snapshot=""
 
+    found_mrs="false"
     for snapshot_mrs in "${SNAPSHOT_LIST[@]}"
     do
-        if [[ "$snapshot_mrs" != "$most_recent_snapshot" ]]
+        if [[ "$snapshot_mrs" = "$most_recent_snapshot" ]]
+        then
+            found_mrs="true"
+        fi
+
+        if [[ "$snapshot_mrs" != "$most_recent_snapshot" && "$found_mrs" = false ]]
         then
             continue
         fi
 
         if [[ "$snapshot_mrs" = "$least_recent_snapshot" ]]
         then
-            # to do: verificare actual_mrs_snapshot gol; fisierul nu a fost modificat
-
             if [[ -z "$actual_mrs_snapshot" ]]
             then
                 echo -e "\nThe file was not modified between the two snapshots!\n"
@@ -360,9 +441,7 @@ function display_differences_for_a_modified_file()
         fi
     done
 
-    # to do: verificare actual_lrs_snapshot gol; fisierul nu a fost modificat
-
-    if [[ -z "$actual_mrs_snapshot" ]]
+    if [[ -z "$actual_lrs_snapshot" ]]
     then
         echo -e "\nThe file was not modified after the creation of the first snapshot!"
         read -p "You want to display its content? (y/n)" response_display_diff
@@ -378,8 +457,8 @@ function display_differences_for_a_modified_file()
     local mrs_snapshot_dir=$(dirname "$actual_mrs_snapshot")
     local lrs_snapshot_dir=$(dirname "$actual_lrs_snapshot")
 
-    echo -e "\nDiferentele dintre cele doua versiuni ale fisierului sunt:\n"
-    if [[ "$in_created" = "true" ]]
+    echo -e "\nThe differences between the two versions of the file are:\n"
+    if [[ "$in_created" = "false" ]]
     then
         diff -y "${lrs_snapshot_dir}/modified_files${file_path}" "${mrs_snapshot_dir}/modified_files${file_path}"
     else
@@ -392,61 +471,150 @@ function initialize_snapshot_list(){
     SNAPSHOT_LIST=($(ls -t "$SNAPSHOTS_DIR" | sed -E 's#^(.*)#\1/\1.snapshot#' | sed "s#^#${SNAPSHOTS_DIR}/#g"))
 }
 
+function restore_file_system(){
+    local snapshot=$1
 
-initialize_snapshot_list
+    if [[ ! -f "$snapshot" ]]
+    then
+        echo -e "\n[ restore_file_system(snapshot) ] - The snapshot does not exist, please enter a valid one!\n"
+        return  
+    fi
 
-options=("Create snapshot" "Compare snapshots" "Check if the files has been modified" "Show the differences between two modified files" "Exit")
-PS3="Choose an option from the menu: " 
-select opt in "${options[@]}"
-do
-	case $REPLY in
-        1)
-            create_snapshot
-            ;;
-        2)
-            echo
-            read -p "Enter the name of the first snapshot: " snapshot1
-            read -p "Enter the name of the second snapshot: " snapshot2
+    local first_snapshot=${SNAPSHOT_LIST[-1]}
+    local restore_dir="$SNAPSHOTS_DIR/restore_dir"
 
-            read -p "Do you want to verify for a specific path? (y/n): " specific_response
-            if [[ "$specific_response" = 'y' ]]
-            then
-                read -p "Enter the path: " specific_path
-                compare_snapshots_specify_path "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot" "$specific_path"
-            else
-                read -p "Do you want to remove a path from verifying? (y/n): " remove_response
-                if [[ "$remove_response" = 'y' ]]
+    mkdir -p "$restore_dir"
+
+    echo "$(printf "%s\n" "${SNAPSHOT_LIST[@]}")" | tac | while read -r line
+    do
+        local current_snapshot_dir=$(dirname "$line")
+        if [[ "$line" = "$first_snapshot" ]]
+        then
+            rsync -a "${current_snapshot_dir}/full_backup/" "$restore_dir" 
+        else
+            rsync -a "${current_snapshot_dir}/created_files/" "$restore_dir" 
+            
+            while read -r deleted_file
+            do
+                rm "${restore_dir}${deleted_file}"
+            done < "${current_snapshot_dir}/deleted_files"
+        fi
+
+        if [[ "$line" = "$snapshot" ]]
+        then
+            break
+        fi
+    done
+
+    find "$restore_dir" -type d -empty -delete
+
+    echo -e "\nThe file system hierarchy corresponding to the specified snapshot has been successfully created."
+    read -p "Do you want it to be displayed? (y/n)" response_restore_fs
+    if [[ "$response_restore_fs" = 'y' ]]
+    then
+        tree "$restore_dir"
+        echo
+    fi
+    read -p "Do you want to apply this file system hierarchy? (y/n)" response_apply_fs
+    if [[ "$response_apply_fs" = 'y' ]]
+    then
+        echo -e "\nrestore dir: ${restore_dir}/\nworking dir: ${WORKING_DIR}\n"
+        rsync -a "$restore_dir/" "$WORKING_DIR"
+    fi
+
+    rm -rf "$restore_dir"
+}
+
+function delete_snapshot(){
+    local snapshot=$1
+
+    if [[ ! -f "$snapshot" ]]
+    then
+        echo -e "\n[ delete_snapshot(snapshot) ] - The snapshot does not exist, please enter a valid one!\n"
+        return
+    fi
+
+    local snapshot_dir=$(dirname "$snapshot")
+    rm -rf "$snapshot_dir"
+
+    if [[ "$(echo $?)" = "0" ]]
+    then
+        echo -e "\nSnapshot deleted successfully!\n"
+    else
+        echo -e "\n[ delete_snapshot(snapshot) ] - The snapshot could not be deleted!\n"
+    fi
+}
+
+function main(){
+
+    initialize_snapshot_list
+
+    options=("Create snapshot" "Compare snapshots" "Restore file system" "Check if the files has been modified" "Show the differences between two modified files" "Delete snapshot" "Exit")
+    PS3="Choose an option from the menu: " 
+    select opt in "${options[@]}"
+    do
+        case $REPLY in
+            1)
+                create_snapshot
+                ;;
+            2)
+                echo
+                read -p "Enter the name of the first snapshot: " snapshot1
+                read -p "Enter the name of the second snapshot: " snapshot2
+
+                read -p "Do you want to verify for a specific path? (y/n): " specific_response
+                if [[ "$specific_response" = 'y' ]]
                 then
-                    read -p "Enter the path to remove: " path_to_delete
-                    compare_snapshots_remove_path "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot" "$path_to_delete"
+                    read -p "Enter the path: " specific_path
+                    compare_snapshots_specify_path "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot" "$specific_path"
                 else
-                    compare_snapshots "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot"
+                    read -p "Do you want to remove a path from verifying? (y/n): " remove_response
+                    if [[ "$remove_response" = 'y' ]]
+                    then
+                        read -p "Enter the path to remove: " path_to_delete
+                        compare_snapshots_remove_path "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot" "$path_to_delete"
+                    else
+                        compare_snapshots "$SNAPSHOTS_DIR/$snapshot1/${snapshot1}.snapshot" "$SNAPSHOTS_DIR/$snapshot2/${snapshot2}.snapshot"
+                    fi
                 fi
-            fi
-            ;;
-        3)
-            echo
-            read -p "Specify the snapshot to check: " snapshot_files_check
-            read -p "Do you want to check for a specific file? (y/n): " file_response
-            if [[ "$file_response" = 'y' ]]
-            then
-                read -p "Enter the path to the file: " file_path
-                check_for_modified_file "$SNAPSHOTS_DIR/$snapshot_files_check/${snapshot_files_check}.snapshot" "$file_path" "only_one"
-            else
-                check_for_modified_files "$snapshot_files_check/${snapshot_files_check}.snapshot"
-            fi
-            ;;
-        4)
-            echo
-            read -p "Specify the file: " modified_file_check
-            read -p "Enter the name of the first snapshot: " snapshot1_display_diff
-            read -p "Enter the name of the second snapshot: " snapshot2_display_diff
+                ;;
+            3)
+                echo
+                read -p "Specify the snapshot that will be used for the restore: " snapshot_restore
+                restore_file_system "$SNAPSHOTS_DIR/$snapshot_restore/${snapshot_restore}.snapshot"
+                ;;
+            4)
+                echo
+                read -p "Specify the snapshot to check: " snapshot_files_check
+                read -p "Do you want to check for a specific file? (y/n): " file_response
+                if [[ "$file_response" = 'y' ]]
+                then
+                    read -p "Enter the path to the file: " file_path
+                    check_for_modified_file "$SNAPSHOTS_DIR/$snapshot_files_check/${snapshot_files_check}.snapshot" "$file_path" "only_one"
+                else
+                    check_for_modified_files "$snapshot_files_check/${snapshot_files_check}.snapshot"
+                fi
+                ;;
+            5)
+                echo
+                read -p "Specify the file: " modified_file_check
+                read -p "Enter the name of the first snapshot: " snapshot1_display_diff
+                read -p "Enter the name of the second snapshot: " snapshot2_display_diff
 
-            display_differences_for_a_modified_file "$SNAPSHOTS_DIR/$snapshot1_display_diff/${snapshot1_display_diff}.snapshot" "$SNAPSHOTS_DIR/$snapshot2_display_diff/${snapshot2_display_diff}.snapshot" "$modified_file_check"
-            ;;
-        5)
-			echo -e "\n==EXIT==\n"
-			exit
-			;;
-    esac
-done
+                display_differences_for_a_modified_file "$SNAPSHOTS_DIR/$snapshot1_display_diff/${snapshot1_display_diff}.snapshot" "$SNAPSHOTS_DIR/$snapshot2_display_diff/${snapshot2_display_diff}.snapshot" "$modified_file_check"
+                ;;
+            6)
+                echo
+                read -p "Specify the snapshot to delete: " snapshot_to_delete
+                delete_snapshot "$SNAPSHOTS_DIR/$snapshot_to_delete/${snapshot_to_delete}.snapshot"
+                ;;
+            7)
+                echo -e "\n==EXIT==\n"
+
+                exit
+                ;;
+        esac
+    done
+}
+
+main "$@"
