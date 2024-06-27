@@ -2,7 +2,7 @@
 
 SNAPSHOTS_DIR="$HOME/snapshots"
 EXCLUDE_PATHS=("$SNAPSHOTS_DIR")
-WORKING_DIR="/home/stoica/so"
+WORKING_DIR="$HOME/so"
 SNAPSHOT_LIST=()
 
 function create_snapshot() {
@@ -11,8 +11,10 @@ function create_snapshot() {
 
     local timestamp=$(date +%Y-%m-%d_%H:%M:%S)
     local current_timestamp_epoch=$(date +%s)
-    local snapshot_path_dir="${SNAPSHOTS_DIR}/${snapshot_name}__${timestamp}"
-    local snapshot_path="${snapshot_path_dir}/${snapshot_name}__${timestamp}.snapshot"
+    # local snapshot_path_dir="${SNAPSHOTS_DIR}/${snapshot_name}__${timestamp}"
+    # local snapshot_path="${snapshot_path_dir}/${snapshot_name}__${timestamp}.snapshot"
+    local snapshot_path_dir="${SNAPSHOTS_DIR}/${snapshot_name}"
+    local snapshot_path="${snapshot_path_dir}/${snapshot_name}.snapshot"
 
     mkdir -p "$snapshot_path_dir"
 
@@ -32,7 +34,7 @@ function create_snapshot() {
     then
         full_backup_dir="${snapshot_path_dir}/full_backup"
         mkdir -p "$full_backup_dir"
-        rsync -aRq "$WORKING_DIR" "$full_backup_dir"
+        sudo rsync -aRq --exclude "$SNAPSHOTS_DIR" "$WORKING_DIR" "$full_backup_dir"
     else
         current_snapshot="${snapshot_path}"
         previous_snapshot_dir_path=$(find "${SNAPSHOTS_DIR}" -maxdepth 1 -type d -exec stat -c '%W %n' {} + | sort -n | tail -n 2 | head -n 1 |cut -f2 -d' ')
@@ -124,11 +126,26 @@ function compare_snapshots() {
     sort -o $snapshot1 $snapshot1
     sort -o $snapshot2 $snapshot2
 
+    local creation_time_snapshot1=$(stat -c %W "$snapshot1")
+    local creation_time_snapshot2=$(stat -c %W "$snapshot2")
+
+    local most_recent_snapshot=""
+    local least_recent_snapshot=""
+
+    if [[ "$creation_time_snapshot1" -gt "$creation_time_snapshot2" ]]
+    then
+        most_recent_snapshot="$snapshot1"
+        least_recent_snapshot="$snapshot2"
+    else
+        most_recent_snapshot="$snapshot2"
+        least_recent_snapshot="$snapshot1"
+    fi
+
     echo -e "\nFiles created:"
-    comm -13 "$snapshot1" "$snapshot2"
+    comm -13 "$least_recent_snapshot" "$most_recent_snapshot"
 
     echo -e "\nDeleted files:"
-    comm -23 "$snapshot1" "$snapshot2"
+    comm -23 "$least_recent_snapshot" "$most_recent_snapshot"
     echo
 }
 
@@ -197,7 +214,7 @@ function check_for_modified_files() {
         return
     fi
 
-    echos
+    echo
     while read file_path
     do
         if [[ ! -f $file_path ]]
@@ -245,9 +262,9 @@ function check_for_modified_file(){
     then
         if [[ "$file_modification_epoch" -lt "$snapshot_creation_time_epoch" ]]
         then
-            echo "The file has not been modified."
+            echo -e "\nThe file has not been modified.\n"
         else
-            echo "The file has been modified."
+            echo -e "\nThe file has been modified.\n"
         fi
     else
         if [[ "$file_modification_epoch" -lt "$snapshot_creation_time_epoch" ]]
@@ -277,16 +294,16 @@ function display_differences_for_a_modified_file()
         return
     fi
 
-    if ! egrep "^${file_path}" "$snapshot1" > /dev/null
+    if ! egrep -q "^${file_path}" "$snapshot1" 2> /dev/null
     then
         echo -e "\nThe file does not exists in the first snapshot!\n"
         return
     fi
 
-    if ! egrep "^${file_path}" "$snapshot2" > /dev/null
+    if ! egrep -q "^${file_path}" "$snapshot2" 2> /dev/null
     then
         echo -e "\nThe file does not exists in the second snapshot!\n"
-        returnS
+        return
     fi
 
     local snapshot1_dir=$(dirname "$snapshot1")
@@ -332,8 +349,8 @@ function display_differences_for_a_modified_file()
 
     # if the file exist localy in both snapshots
 
-    creation_time_snapshot1=$(stat -c %W "$snapshot1")
-    creation_time_snapshot2=$(stat -c %W "$snapshot2")
+    local creation_time_snapshot1=$(stat -c %W "$snapshot1")
+    local creation_time_snapshot2=$(stat -c %W "$snapshot2")
 
     local most_recent_snapshot=""
     local least_recent_snapshot=""
@@ -444,7 +461,7 @@ function display_differences_for_a_modified_file()
     if [[ -z "$actual_lrs_snapshot" ]]
     then
         echo -e "\nThe file was not modified after the creation of the first snapshot!"
-        read -p "You want to display its content? (y/n)" response_display_diff
+        read -p "You want to display its content? (y/n): " response_display_diff
         if [[ "$response_display_diff" = 'y' ]]
         then
             first_snapshot_dir=$(dirname "$first_snapshot")
@@ -493,7 +510,8 @@ function restore_file_system(){
             rsync -a "${current_snapshot_dir}/full_backup/" "$restore_dir" 
         else
             rsync -a "${current_snapshot_dir}/created_files/" "$restore_dir" 
-            
+            rsync -a "${current_snapshot_dir}/modified_files/" "$restore_dir"
+
             while read -r deleted_file
             do
                 rm "${restore_dir}${deleted_file}"
@@ -509,17 +527,26 @@ function restore_file_system(){
     find "$restore_dir" -type d -empty -delete
 
     echo -e "\nThe file system hierarchy corresponding to the specified snapshot has been successfully created."
-    read -p "Do you want it to be displayed? (y/n)" response_restore_fs
+    read -p "Do you want it to be displayed? (y/n): " response_restore_fs
+    echo
     if [[ "$response_restore_fs" = 'y' ]]
     then
         tree "$restore_dir"
         echo
     fi
-    read -p "Do you want to apply this file system hierarchy? (y/n)" response_apply_fs
+    read -p "Do you want to apply this file system hierarchy? (y/n): " response_apply_fs
+    echo
     if [[ "$response_apply_fs" = 'y' ]]
     then
-        echo -e "\nrestore dir: ${restore_dir}/\nworking dir: ${WORKING_DIR}\n"
-        rsync -a "$restore_dir/" "$WORKING_DIR"
+        rsync -a "${restore_dir}${WORKING_DIR}/" "$WORKING_DIR"
+
+        local result=$(echo $?)
+        if [[ "$result" = '0' ]]
+        then
+            echo -e "The file system has been modified successfully!\n"
+        else
+            echo -e "The file system could not be modified!\n"
+        fi
     fi
 
     rm -rf "$restore_dir"
@@ -549,6 +576,7 @@ function main(){
 
     initialize_snapshot_list
 
+    echo
     options=("Create snapshot" "Compare snapshots" "Restore file system" "Check if the files has been modified" "Show the differences between two modified files" "Delete snapshot" "Exit")
     PS3="Choose an option from the menu: " 
     select opt in "${options[@]}"
