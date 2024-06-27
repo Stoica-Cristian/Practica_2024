@@ -44,7 +44,8 @@ int main(int argc, char **argv) {
         inet_ntop(p->ai_family, addr, ip_string, sizeof ip_string);
         std::cout << ip_version << ": " << ip_string << std::endl;
     }
-
+    
+    std::cout << std::endl;
     freeaddrinfo(result);
 
     return 0;

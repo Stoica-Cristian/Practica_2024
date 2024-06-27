@@ -538,7 +538,7 @@ function restore_file_system(){
     echo
     if [[ "$response_apply_fs" = 'y' ]]
     then
-        rsync -a "${restore_dir}${WORKING_DIR}/" "$WORKING_DIR"
+        rsync -a --delete "${restore_dir}${WORKING_DIR}/" "$WORKING_DIR"
 
         local result=$(echo $?)
         if [[ "$result" = '0' ]]
